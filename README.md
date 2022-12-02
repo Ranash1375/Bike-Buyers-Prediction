@@ -1,6 +1,6 @@
 # Bike-Buyers-Prediction
-1. Visualized data analytically using ggplot2 package in R and determined correlation between
-variables and outliers
+1. Visualized data analytically using ggplot2 package in R and determined outliers and correlation between
+variables
 2. Fit logistic regression and random forest models by MASS and randomForest libraries to predict
 whether customers purchase a product or not
 3. Used k-fold cross validation for tuning KS statistic as a probability threshold for logistic regression
