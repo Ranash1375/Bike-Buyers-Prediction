@@ -1,0 +1,486 @@
+---
+title: |
+  | CSE 780
+  | Project Supplementary Material
+author: "Rana Shariat"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  pdf_document:
+    includes:
+      in_header: header.tex
+    toc: true
+fontsize: 12pt
+bibliography: references.bib
+nocite: '@*'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, 
+                      warning=FALSE, results="hide", fig.show="hide")
+
+knitr::write_bib(c('dplyr', 'readr', 'ggplot2', 'Hmisc', 'corrplot','ltm', 'caTools', 'MASS',
+                   'MLmetrics', 'ROCR', 'pROC', 'ROCit', 'plotROC', 'caret', 'randomForest'), file = 'references.bib')
+```
+
+\newpage
+
+Add packages.
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+```
+
+
+```{r, include=FALSE}
+bicycledataset <- 
+  read_csv("C:\\Users\\DSB\\OneDrive - McMaster University\\Desktop\\CSE780\\Project\\bike_buyers.csv")
+colnames(bicycledataset) <- c('ID', 'Marital.Status', 'Gender', 'Income', 'Children', 'Education', 'Occupation', 'Home.owner', 'Cars', 'Commute.distance', 'Region', 'Age', 'Purchased.Bike')
+```
+
+# Exploratory data analysis
+variable names, summaries, number of observations, data types.
+```{r}
+bicycledataset <- bicycledataset[ , -1]
+xtable::xtable(summary(bicycledataset))
+str(bicycledataset)
+```
+## Missing Values
+Filtering missing values (NA).
+```{r}
+bicycledataset <- bicycledataset[complete.cases(bicycledataset), ]
+summary(bicycledataset)
+```
+
+## Outliers
+Changing categorical variables to numerics to remove outliers.
+```{r}
+i<- c(1,2,5,6,7,9,10,12)
+bicycledataset[ , i] <- apply(bicycledataset[ , i], 2,  
+                    function(x) as.numeric(as.factor(x)))
+bicycledataset$Income <- as.integer(bicycledataset$Income)
+bicycledataset$Children <- as.integer(bicycledataset$Children)
+bicycledataset$Cars <- as.integer(bicycledataset$Cars)
+bicycledataset$Age <- as.integer(bicycledataset$Age)
+```
+Finding outliers using boxplot and IQR, and removing them if there are any.
+```{r}
+
+outliers <- function(x) {
+  
+ x %in% boxplot.stats(x)$out
+}
+
+remove_outliers <- function(df, cols = names(df)) {
+  for (col in cols) {
+    df <- df[!outliers(df[[col]]),]
+  }
+  df
+}
+
+bicycledataset <- remove_outliers( bicycledataset, names(bicycledataset))
+```
+Changing categorical variables to factors.
+```{r}
+i<- c(1,2,5,6,7,9,10,12)
+bicycledataset[ , i] <- apply(bicycledataset[ , i], 2,  
+                    function(x) as.factor(x))
+```
+
+## Correlation
+pairwise correlation/association analysis for integer features.
+```{r}
+library("Hmisc")
+library("corrplot")
+res <- rcorr(as.matrix(bicycledataset[,c(3,4,8,11)]),type="spearman")
+plotb <- corrplot(res$r, type="upper", order="hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+```{r, include=FALSE}
+png(file="C:\\Users\\DSB\\OneDrive - McMaster University\\Desktop\\CSE780\\Project\\corrplot.png",  width = 1400, height = 800)
+corrplot(res$r, type="upper", order="hclust", 
+         tl.col = "black", tl.srt = 45)
+dev.off()
+```
+
+Chi-squared test for categorical variables correlation.
+```{r}
+chisq.test(table(bicycledataset$Occupation, bicycledataset$Education))
+chisq.test(table(bicycledataset$Occupation, bicycledataset$Home.owner))
+chisq.test(table(bicycledataset$Education, bicycledataset$Home.owner))
+```
+Correlation of the remaining features with response variable.
+chi-squared test for the categorical variables. 
+```{r}
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Marital.Status))
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Gender))
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Marital.Status))
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Occupation))
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Commute.distance))
+chisq.test(table(bicycledataset$Purchased.Bike,
+                 bicycledataset$Region))
+```
+Box plots & biserial correlation test for numerical variables and response variable. 
+```{r}
+library(ltm)
+ggplot(bicycledataset) + 
+  geom_boxplot(aes(x = Purchased.Bike, y = Income, fill = 
+                     Purchased.Bike)) + labs(y = "Income") 
+biserial.cor(bicycledataset$Income, bicycledataset$Purchased.Bike)
+
+ggplot(bicycledataset) + 
+  geom_boxplot(aes(x = Purchased.Bike, y = Children, fill = 
+                     Purchased.Bike)) + labs(y = "Children") 
+
+biserial.cor( bicycledataset$Children, bicycledataset$Purchased.Bike)
+
+ggplot(bicycledataset) + 
+  geom_boxplot(aes(x = Purchased.Bike, y = Cars, fill = 
+                     Purchased.Bike)) + labs(y = "Cars") 
+
+biserial.cor(bicycledataset$Cars, bicycledataset$Purchased.Bike)
+
+ggplot(bicycledataset) + 
+  geom_boxplot(aes(x = Purchased.Bike, y = Age, fill = 
+                     Purchased.Bike)) + labs(y = "Age")
+biserial.cor(bicycledataset$Age, bicycledataset$Purchased.Bike)
+```
+# Transformation
+scaling the dataset and generating the filtered dataset.
+```{r}
+
+bicycledataset[,c(3,4,8,11)] <- scale(bicycledataset[,c(3,4,8,11)]
+                               ,center = FALSE, scale = TRUE)
+
+bicycledataset_filter <- bicycledataset[ , c(-2,-3,-5,-7)]
+
+```
+# Mehotds
+## Logistic Regression
+Generating test and train set using K-fold CV.
+Fitting model using full and filtered dataset.
+Using stepwise feature selection by AIC.
+Predicting the response for the test set and calculating accuracy and F1 score.
+```{r}
+library(caTools)
+library(MASS)
+library(MLmetrics)
+library(ROCR)
+library(pROC)
+library(ROCit)
+library(plotROC)
+library(caret)
+
+bicycledataset$Purchased.Bike <- as.factor(ifelse(
+  bicycledataset_filter$Purchased.Bike == '2',1,0))
+
+bicycledataset_filter$Purchased.Bike <- as.factor(ifelse(
+  bicycledataset_filter$Purchased.Bike == '2',1,0))
+
+Accuracylg <- data.frame(matrix(ncol = 3, nrow = 0))
+colnames(Accuracylg) <- c("Full", "Filter", "Step")
+
+F_1lg <- data.frame(matrix(ncol = 3, nrow = 0))
+colnames(F_1lg) <- c("Full", "Filter", "Step")
+
+#Randomly shuffle the data
+set.seed(2)
+bicycledataset<-bicycledataset[sample(nrow(bicycledataset)),]
+set.seed(2)
+bicycledataset_filter<-bicycledataset_filter[
+  sample(nrow(bicycledataset_filter)),]
+
+
+#Create 10 equal size folds
+set.seed(3)
+folds <- cut(seq(1,nrow(bicycledataset)),breaks=10,labels=FALSE)
+
+for (i in 1:10){
+  
+testIndexes <- which(folds==i,arr.ind=TRUE)
+
+train = bicycledataset_filter[-testIndexes, ]
+test = bicycledataset_filter[testIndexes, ]
+
+full.train = bicycledataset[-testIndexes, ]
+full.test = bicycledataset[testIndexes, ]
+
+full.Y = bicycledataset$Purchased.Bike
+Y = bicycledataset$Purchased.Bike
+
+#training using full dataset
+logistic_full <- glm(Purchased.Bike ~ .,
+                     data=full.train, family = binomial("logit"))
+prediction <- predict(logistic_full, full.train, type = "response")
+#KS statistic for finding the best probability threshold
+df <- tibble(prediction = prediction, 
+             class = full.Y[-testIndexes])
+ROCit_obj <- rocit(
+  score = as.vector(dplyr::pull(df, prediction)),
+  class = as.vector(dplyr::pull(df, class))
+  )
+ks <- ksplot(ROCit_obj)
+full <- ks$`KS Cutoff`
+
+#training using filtered dataset
+logistic_model <- glm(Purchased.Bike ~ .,
+                      data=train, family = binomial("logit"))
+prediction <- predict(logistic_model, train, type = "response")
+#KS statistic for finding the best probability threshold
+df <- tibble(prediction = prediction, 
+             class = Y[-testIndexes])
+ROCit_obj <- rocit(
+  score = as.vector(dplyr::pull(df, prediction)),
+  class = as.vector(dplyr::pull(df, class))
+  )
+ks <- ksplot(ROCit_obj)
+filter <- ks$`KS Cutoff`
+
+#training using filtered dataset and backward feature selection method
+logistic_step_model <- logistic_model %>%
+  stepAIC(trace = FALSE, direction ="backward")
+prediction <- predict(logistic_step_model, train, type = "response")
+#KS statistic for finding the best probability threshold
+df <- tibble(prediction = prediction, 
+             class = Y[-testIndexes])
+ROCit_obj <- rocit(
+  score = as.vector(dplyr::pull(df, prediction)),
+  class = as.vector(dplyr::pull(df, class))
+  )
+ks <- ksplot(ROCit_obj)
+step <- ks$`KS Cutoff`
+
+#prediction for 3 models using test sets & calculating comparison criterion
+prediction <- predict(logistic_full, full.test, type = "response")
+predicted.classes <- ifelse(prediction > full, 1, 0)
+acc1 <- mean(predicted.classes == full.test$Purchased.Bike)
+F1_1 <- F1_Score(predicted.classes,full.test$Purchased.Bike)
+
+prediction <- predict(logistic_model, test, type = "response")
+predicted.classes <- ifelse(prediction > filter, 1, 0)
+acc2 <- mean(predicted.classes == test$Purchased.Bike)
+F1_2 <- F1_Score(predicted.classes,test$Purchased.Bike)
+
+prediction <- predict(logistic_step_model, test, type = "response")
+predicted.classes <- ifelse(prediction > step, 1, 0)
+acc3 <- mean(predicted.classes == test$Purchased.Bike)
+F1_3 <- F1_Score(predicted.classes,test$Purchased.Bike)
+
+Accuracylg[nrow(Accuracylg) + 1,] = c(acc1,acc2,acc3)
+F_1lg[nrow(F_1lg) + 1,] = c(F1_1,F1_2,F1_3)
+}
+
+colMeans(Accuracylg)
+colMeans(F_1lg)
+coef(logistic_model)
+coef(logistic_step_model)
+
+acc <-  data.frame(Accuracylg$Step)
+F_1score <-  data.frame(F_1lg$Step)
+
+#variable importance
+varImp(logistic_full, scale=F)
+varImp(logistic_model, scale=F)
+varImp(logistic_step_model, scale=F)
+```
+Accuracy difference for LR using ANOVA.
+```{r}
+Accuracylg <- tidyr::gather(
+  data = Accuracylg, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = Accuracylg)
+summary(one.way)
+```
+F_1 score difference for LR using ANOVA.
+```{r}
+F_1lg <- tidyr::gather(
+  data = F_1lg, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = F_1lg)
+summary(one.way)
+```
+## Random Forest
+Generating test and train set using K-fold CV.
+Fitting model using full and filtered dataset.
+Predicting the response for the test set and calculating accuracy and F1 score.
+```{r}
+library(randomForest)
+
+Accuracy <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(Accuracy) <- c("Full", "Filter")
+
+F_1 <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(F_1) <- c("Full", "Filter")
+
+
+#Randomly shuffle the data
+set.seed(2)
+bicycledataset<-bicycledataset[sample(nrow(bicycledataset)),]
+set.seed(2)
+bicycledataset_filter<-bicycledataset_filter[
+  sample(nrow(bicycledataset_filter)),]
+
+#Create 10 equally size folds
+set.seed(3)
+folds <- cut(seq(1,nrow(bicycledataset)),breaks=10,labels=FALSE)
+
+for (i in 1:10){
+  
+testIndexes <- which(folds==i,arr.ind=TRUE)
+
+train = bicycledataset_filter[-testIndexes, ]
+test = bicycledataset_filter[testIndexes, ]
+
+full.train = bicycledataset[-testIndexes, ]
+full.test = bicycledataset[testIndexes, ]
+
+# Training using ‘random forest’ algorithm for tuning mtry
+set.seed(i)
+model <- train(Purchased.Bike ~ ., 
+data = train, 
+method = 'rf',
+trControl = trainControl(method = 'cv', 
+number = 5))
+
+set.seed(i)
+model.full <- train(Purchased.Bike ~ ., 
+data = full.train, 
+method = 'rf',
+trControl = trainControl(method = 'cv', 
+number = 5))
+
+
+#Full model training with best mtry
+set.seed(i)
+rf_model_full <- randomForest(Purchased.Bike ~ .,
+                         data=full.train,
+                         mtry=model.full$bestTune$mtry,
+                         importance=TRUE,
+                         type="class",
+                         ntree = 500)
+# print(rf_model_full)
+# importance(rf_model_full)
+# varImpPlot(rf_model_full)
+
+#Full model prediction
+full_pred <- predict(rf_model_full,
+                     full.test,
+                     type="class")
+
+acc1 <- mean(full.test$Purchased.Bike==full_pred)
+F1_1 <- F1_Score(full_pred,full.test$Purchased.Bike)
+
+#Filtered dataset training with best mtry
+set.seed(i)
+rf_model_filter <- randomForest(Purchased.Bike ~ .,
+                         data=train,
+                         mtry=model$bestTune$mtry,
+                         importance=TRUE,
+                         type="class",
+                         ntree = 500)
+# print(rf_model_filter)
+# importance(rf_model_filter)
+# varImpPlot(rf_model_filter)
+
+#Filtered model prediction
+filter_pred <- predict(rf_model_filter,
+                     test,
+                     type="class")
+
+acc2 <- mean(test$Purchased.Bike==filter_pred)
+F1_2 <- F1_Score(filter_pred,test$Purchased.Bike)
+
+
+
+Accuracy[nrow(Accuracy) + 1,] = c(acc1,acc2)
+F_1[nrow(F_1) + 1,] = c(F1_1,F1_2)
+}
+colMeans(Accuracy)
+colMeans(F_1)
+
+acc <-  data.frame(acc, Accuracy$Filter)
+F_1score <-  data.frame(F_1score, F_1$Filter)
+
+#variable importance
+varImp(rf_model_full, scale=F)
+varImp(rf_model_filter, scale=F)
+```
+Accuracy difference for RF using ANOVA.
+```{r}
+Accuracy <- tidyr::gather(
+  data = Accuracy, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = Accuracy)
+summary(one.way)
+```
+F_1 score difference for RF using ANOVA.
+```{r}
+F_1 <- tidyr::gather(
+  data = F_1, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = F_1)
+summary(one.way)
+```
+# Comparison
+Comparison between RF and LR.
+```{r}
+colMeans(acc)
+acc <- tidyr::gather(
+  data = acc, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = acc)
+summary(one.way)
+
+colMeans(F_1score)
+F_1score <- tidyr::gather(
+  data = F_1score, 
+  key = "model", 
+  value = "value")
+
+one.way <- aov(value ~ model, data = F_1score)
+summary(one.way)
+```
+Boxplot for RF and LR accuracy and F1 score.
+```{r}
+acc$model <-ifelse(acc$model == "Accuracylg.Step","LR","RF")
+F_1score$model <-ifelse(F_1score$model == "F_1lg.Step","LR","RF")
+
+
+```
+
+```{r}
+
+ggplot(acc, aes(x = model, y = value, fill =  model)) +                 
+  geom_boxplot() +  labs(y = "Accuracy") +
+  stat_summary(fun = mean, geom = "point", col = "white")+
+    stat_summary(fun = mean, geom = "text", col = "white",     
+               vjust = 1.5, aes(label = paste("Mean:",
+                                              round(..y.., digits = 2))))
+
+
+ggplot(F_1score, aes(x = model, y = value, fill =  model)) +                
+  geom_boxplot()+ labs(y = "F1 Score")  +
+  stat_summary(fun = mean, geom = "point", col = "white") +  
+  stat_summary(fun = mean, geom = "text", col = "white",     
+               vjust = 1.5, aes(label = paste("Mean:",
+                                              round(..y.., digits =2))))
+```
+
+\newpage
+
+# References
